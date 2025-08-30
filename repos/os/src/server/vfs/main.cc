@@ -916,6 +916,8 @@ class Vfs_server::Root : public Genode::Root_component<Session_component>,
 			{
 				Session_label const client_root_path = label.last_element();
 				bool root_path_valid = true;
+				Genode::warning("############## os/src/server/vfs/main.cc:", __LINE__, " ", __func__, "() args=", args);
+				Genode::warning("############## os/src/server/vfs/main.cc:", __LINE__, " ", __func__, "() client_root_path=", client_root_path);
 				if (client_root_path.string()[0] != '/') {
 					warning(label, ": last label element should start with /");
 					root_path_valid = false;
