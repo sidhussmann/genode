@@ -114,11 +114,14 @@ struct Chroot::Main
 
 		Session_label const label = label_from_args(args.string());
 
+		Genode::warning("############## os/src/server/chroot/component.cc:", __LINE__, " ", __func__, "() label=", label);
+
 		if (policy.has_attribute("path_prefix")) {
 			/* Use a chroot path from policy and label sub-directories */
 			Prefix const prefix = policy.attribute_value("path_prefix", Prefix());
 			root_path.import(prefix.string());
 			root_path.append(path_from_label<Path>(label.prefix().string()).string());
+			Genode::warning("############## os/src/server/chroot/component.cc:", __LINE__, " ", __func__, "() root_path=", root_path);
 		} else if (policy.has_attribute("path")) {
 			/* Use a chroot path from policy */
 			root_path.import(policy.attribute_value("path", Prefix()).string());
@@ -144,6 +147,7 @@ struct Chroot::Main
 			root_path.append(client_root_path.string());
 			root_path.remove_trailing('/');
 		}
+		Genode::warning("############## os/src/server/chroot/component.cc:", __LINE__, " ", __func__, "() root_path=", root_path);
 
 		char const *new_root = root_path.base();
 
@@ -192,10 +196,13 @@ struct Chroot::Main
 		Session_label const rewritten_label =
 			prefixed_label(label.prefix(), Session_label(root_path.string(), "/"));
 
+		Genode::warning("############## os/src/server/chroot/component.cc:", __LINE__, " ", __func__, "() rewritten_label=", rewritten_label);
+
 		if (!Arg_string::set_arg_string(new_args, ARGS_MAX_LEN, "label", rewritten_label.string())) {
 			warning("label \"", rewritten_label, "\" is too long for session arguments");
 			throw Service_denied();
 		}
+		Genode::warning("############## os/src/server/chroot/component.cc:", __LINE__, " ", __func__, "() id=", id, " new_args.length=", Cstring { new_args }.length(), " new_args=", Cstring { new_args });
 
 		return env.session("File_system", id, new_args, affinity);
 	}
@@ -222,11 +229,13 @@ void Chroot::Main::handle_session_request(Node const &request)
 
 		with_matching_policy(label_from_args(args.string()), config_rom.node(),
 			[&] (Node const &policy) {
+			Genode::warning("############## os/src/server/chroot/component.cc:", __LINE__, " ", __func__, "() request=", request);
 				Session &session = *new (heap)
 					Session(env.id_space(), server_id_space, server_id);
 				Session_capability cap =
 					request_session(session.client_id.id(), args,
 					                Affinity::from_node(request), policy);
+			Genode::warning("############## os/src/server/chroot/component.cc:", __LINE__, " ", __func__, "() cap=", cap);
 				env.parent().deliver_session_cap(server_id, cap);
 			},
 			[&] {
