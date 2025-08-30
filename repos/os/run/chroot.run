@@ -1,0 +1,121 @@
+
+build {
+	server/chroot
+	server/vfs
+	lib/vfs
+}
+
+create_boot_directory
+
+import_from_depot \
+	[depot_user]/src/[base_src] \
+	[depot_user]/src/fs_query \
+	[depot_user]/src/init \
+	[depot_user]/src/report_rom \
+	[depot_user]/src/vfs_import
+
+install_config {
+<config verbose="no">
+	<parent-provides>
+		<service name="ROM"/>
+		<service name="IRQ"/>
+		<service name="IO_MEM"/>
+		<service name="IO_PORT"/>
+		<service name="PD"/>
+		<service name="RM"/>
+		<service name="CPU"/>
+		<service name="LOG"/>
+	</parent-provides>
+	<default-route>
+		<any-service> <parent/> </any-service>
+	</default-route>
+
+	<default caps="100" ram="1M"/>
+
+	<start name="timer">
+		<provides><service name="Timer"/></provides>
+	</start>
+
+	<start name="report_rom">
+		<provides> <service name="Report"/> <service name="ROM"/> </provides>
+		<config verbose="yes"/>
+	</start>
+
+	<start name="vfs" caps="300" ram="8M">
+		<provides> <service name="File_system"/> </provides>
+		<config>
+			<vfs>
+				<dir name="subdir">
+					<ram/>
+				</dir>
+			</vfs>
+			<policy label_prefix="rw ->" root="/" writeable="yes"/>
+			<default-policy root="/"/>
+		</config>
+		<route>
+			<any-service> <parent/> </any-service>
+		</route>
+	</start>
+
+	<start name="chroot_test_fs" caps="100" ram="2M">
+		<binary name="chroot"/>
+		<provides> <service name="File_system"/> </provides>
+		<config>
+			<default-policy path_prefix="/subdir" writeable="yes"/>
+		</config>
+		<route>
+			<service name="File_system"> <child name="vfs" identity="rw"/> </service>
+			<any-service> <parent/> </any-service>
+		</route>
+	</start>
+
+	<start name="test" caps="100" ram="4M">
+		<binary name="vfs"/>
+		<provides> <service name="File_system"/> </provides>
+		<config>
+			<vfs>
+				<fs label="home -> /"/>
+				<import>
+					<inline name="version.txt">2.0.6</inline>
+				</import>
+			</vfs>
+			<default-policy root="/"/>
+		</config>
+		<route>
+
+			<!-- WORKS: -->
+<!-- 			<service name="File_system" label_prefix="home ->"> <child name="chroot_test_fs" identity="os -> dynamic -> someapp" resource="/conf/"/> </service> -->
+<!-- 			<service name="File_system" label_prefix="home ->"> <child name="chroot_test_fs" identity="os -> dynamic -> someapp" resource="/configt/"/> </service> -->
+<!-- 			<service name="File_system" label_prefix="home ->"> <child name="chroot_test_fs" identity="os -> dynamic" resource="/someapp/config/"/> </service> -->
+
+			<!-- FAILS: -->
+<!-- 			<service name="File_system" label_prefix="home ->"> <child name="chroot_test_fs" identity="os -> dynamic -> someapp" resource="/confi/"/> </service> -->
+			<service name="File_system" label_prefix="home ->"> <child name="chroot_test_fs" identity="os -> dynamic -> someapp" resource="/config/"/> </service>
+<!-- 			<service name="File_system" label_prefix="home ->"> <child name="chroot_test_fs" label="os -> dynamic -> someapp -> /config/"/> </service> -->
+
+			<any-service> <parent/> </any-service>
+		</route>
+	</start>
+
+	<start name="fs_query" caps="120" ram="2M">
+		<config>
+			<vfs>
+				<fs label="home -> /"/>
+			</vfs>
+			<query path="/subdir"/>
+			<query path="/subdir/os/dynamic/someapp/conf"/> <!-- WORKS -->
+			<query path="/subdir/os/dynamic/someapp/confi"/> <!-- FAILS -->
+			<query path="/subdir/os/dynamic/someapp/config"/> <!-- FAILS -->
+			<query path="/subdir/os/dynamic/someapp/configt"/> <!-- WORKS -->
+		</config>
+		<route>
+			<service name="Report"> <child name="report_rom"/> </service>
+			<service name="File_system"> <child name="vfs"/> </service>
+			<any-service> <parent/> </any-service>
+		</route>
+	</start>
+</config>}
+
+build_boot_image [build_artifacts]
+
+run_genode_until {.*init -> report_rom].*file name="version.txt".*\n} 60
