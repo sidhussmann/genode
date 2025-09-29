@@ -15,7 +15,7 @@ if {$python_pcapng_missing} {
 	exit 1;
 }
 
-build { server/lx_fs app/ping }
+build { }
 
 create_boot_directory
 
@@ -29,7 +29,9 @@ import_from_depot \
 	[depot_user]/src/trace_recorder \
 	[depot_user]/raw/trace_recorder \
 	[depot_user]/src/trace_recorder_policy \
-	[depot_user]/src/dynamic_rom
+	[depot_user]/src/dynamic_rom \
+	[depot_user]/src/ping \
+	[depot_user]/src/lx_fs \
 
 install_config {
 	<config verbose="yes">
@@ -44,8 +46,7 @@ install_config {
 		</parent-provides>
 
 		<default-route>
-			<service name="File_system"> <child name="vfs"/> </service>
-			<any-service> <parent/> <any-child/> </any-service>
+			<any-service> <parent/> </any-service>
 		</default-route>
 		<default caps="100" ram="1M"/>
 
@@ -64,56 +65,92 @@ install_config {
 			</config>
 		</start>
 
-		<start name="nic_router">
-			<provides>
-				<service name="Nic"/>
-				<service name="Uplink"/>
-			</provides>
-			<config icmp_echo_server="yes" trace_packets="yes">
-				<default-policy domain="default"/>
+		<start name="os" caps="1000" ram="64M">
+			<binary name="init"/>
+			<config verbose="yes">
+				<parent-provides>
+					<service name="CPU"/>
+					<service name="File_system"/>
+					<service name="IRQ"/>
+					<service name="LOG"/>
+					<service name="PD"/>
+					<service name="RM"/>
+					<service name="ROM"/>
+					<service name="Rtc"/>
+					<service name="TRACE"/>
+					<service name="Timer"/>
+				</parent-provides>
 
-				<domain name="default" interface="10.0.4.1/24">
-					<dhcp-server ip_first="10.0.4.2" ip_last="10.0.4.10"/>
-				</domain>
+				<default-route>
+					<any-service> <parent/> </any-service>
+				</default-route>
+
+				<default caps="100" ram="1M"/>
+
+				<start name="nic_router">
+					<provides>
+						<service name="Nic"/>
+						<service name="Uplink"/>
+					</provides>
+					<config icmp_echo_server="yes" trace_packets="yes">
+						<default-policy domain="default"/>
+
+						<domain name="default" interface="10.0.4.1/24">
+							<dhcp-server ip_first="10.0.4.2" ip_last="10.0.4.10"/>
+						</domain>
+					</config>
+				</start>
+
+				<start name="ping" caps="100" ram="10M">
+					<config dst_ip="10.0.4.1" period_sec="1" count="20" verbose="yes"/>
+					<route>
+						<service name="Nic"> <child name="nic_router"/> </service>
+						<any-service> <parent/> </any-service>
+					</route>
+				</start>
+
+				<!-- using dynamic_rom to delay enabling of trace_recorder -->
+				<start name="dynamic_rom">
+					<provides><service name="ROM"/></provides>
+					<config>
+						<rom name="config">
+							<inline>
+								<config/>
+							</inline>
+							<sleep milliseconds="1000"/>
+							<inline>
+								<config period_ms="3000" target_root="/" enable="yes">
+									<vfs> <fs/> </vfs>
+<!-- 									<policy label_suffix="nic_router" thread="ep" policy="pcapng"> -->
+									<policy label_suffix="nic_router" thread="ep" policy="pcapng" buffer="4M">
+										<pcapng/>
+									</policy>
+								</config>
+							</inline>
+							<sleep milliseconds="5000"/>
+							<inline>
+								<config/>
+							</inline>
+							<sleep milliseconds="10000000"/>
+						</rom>
+					</config>
+				</start>
+
+				<start name="trace_recorder" caps="200" ram="48M">
+					<route>
+						<service name="ROM" label="config"> <child name="dynamic_rom"/> </service>
+						<any-service> <parent/> </any-service>
+					</route>
+				</start>
+
 			</config>
-		</start>
-
-		<start name="ping" ram="10M">
-			<config dst_ip="10.0.4.1" period_sec="1" count="10" verbose="yes"/>
-		</start>
-
-		<!-- using dynamic_rom to delay enabling of trace_recorder -->
-		<start name="dynamic_rom">
-			<provides><service name="ROM"/></provides>
-			<config>
-				<rom name="config">
-					<inline>
-						<config/>
-					</inline>
-					<sleep milliseconds="1000"/>
-					<inline>
-						<config period_ms="3000" enable="yes">
-							<vfs> <fs/> </vfs>
-							<policy label_suffix="nic_router" thread="ep" policy="pcapng">
-								<pcapng/>
-							</policy>
-						</config>
-					</inline>
-					<sleep milliseconds="5000"/>
-					<inline>
-						<config/>
-					</inline>
-					<sleep milliseconds="10000"/>
-				</rom>
-			</config>
-		</start>
-
-		<start name="trace_recorder" caps="200" ram="16M">
 			<route>
+				<service name="ROM" label_last="platform_info"> <parent label="config"/> </service>
 				<service name="File_system"> <child name="lx_fs"/> </service>
-				<service name="ROM" label="config"> <child name="dynamic_rom"/> </service>
+				<service name="Timer"> <child name="timer"/> </service>
+				<service name="Rtc"> <child name="linux_rtc"/> </service>
 				<service name="TRACE"> <parent label=""/> </service>
-				<any-service> <parent/> <any-child/> </any-service>
+				<any-service> <parent/> </any-service>
 			</route>
 		</start>
 
@@ -127,7 +164,7 @@ build_boot_image [list {*}[build_artifacts] fs]
 
 append qemu_args " -nographic "
 
-run_genode_until {Enabled pcapng writer for init -> nic_router -> ep} 15
+run_genode_until {Enabled pcapng writer for init -> os -> nic_router -> ep} 15
 set spawn_id [output_spawn_id]
 
 run_genode_until {.*child "ping" exited with exit value 0.*} 60 $spawn_id
