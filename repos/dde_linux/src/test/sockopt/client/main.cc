@@ -66,10 +66,12 @@ struct Test::Client
 		addr.sin_family      = AF_INET;
 		addr.sin_addr.s_addr = inet_addr(ip_addr.string());
 
-		ASSERT("connect ...", connect(fd, (sockaddr *)&addr, sizeof(addr)) == 0);
+		int err = connect(fd, (sockaddr *)&addr, sizeof(addr));
+		if (err) Genode::warning("connect errno: ", errno);
+		ASSERT("connect ...",  err == 0);
 
 		int opt = 1;
-		int err = setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &opt, sizeof(opt));
+		err = setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &opt, sizeof(opt));
 		ASSERT("setsockopt SO_KEEPALIVE ...", err == 0);
 
 		unsigned len = 4; opt = 0;
